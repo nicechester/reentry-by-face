@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Re-enter Theme Park</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            text-align: center;
+        }
+        .navbar {
+            background-color: #333;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+        .navbar a {
+            float: left;
+            display: block;
+            color: #f2f2f2;
+            text-align: center;
+            padding: 14px 20px;
+            text-decoration: none;
+            font-size: 17px;
+        }
+        .navbar a:hover {
+            background-color: #ddd;
+            color: black;
+        }
+        .navbar a.active {
+            background-color: #2196F3;
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #video {
+            border: 2px solid #333;
+            border-radius: 8px;
+            width: 640px;
+            height: 480px;
+        }
+        button {
+            margin: 10px;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            border: none;
+            background-color: #2196F3;
+            color: white;
+        }
+        button:hover {
+            background-color: #0b7dda;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .recognized {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .not-recognized {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        #preview {
+            margin-top: 20px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            max-width: 320px;
+            display: none;
+        }
+    </style>
+    <script>
+        let videoStream;
+
+        function startCamera() {
+            // Request higher resolution
+            const constraints = {
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: "user"
+                }
+            };
+
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(function(stream) {
+                    videoStream = stream;
+                    const video = document.getElementById('video');
+                    video.srcObject = stream;
+                    document.getElementById('takePhotoBtn').disabled = false;
+                })
+                .catch(function(err) {
+                    alert('Camera access error: ' + err.message);
+                });
+        }
+
+        function takePhoto() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const preview = document.getElementById('preview');
+
+            // Set canvas to video dimensions
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            // Draw video frame to canvas
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0);
+
+            // Show preview
+            preview.src = canvas.toDataURL('image/png');
+            preview.style.display = 'block';
+
+            // Convert to blob and set to file input
+            canvas.toBlob(function(blob) {
+                const fileInput = document.getElementById('faceImage');
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(new File([blob], 'face-check.png', { type: 'image/png' }));
+                fileInput.files = dataTransfer.files;
+
+                // Enable submit button
+                document.getElementById('submitBtn').disabled = false;
+            }, 'image/png', 0.95); // High quality
+        }
+
+        window.onload = startCamera;
+    </script>
+</head>
+<body>
+<div class="navbar">
+    <a href="/register">Register Face</a>
+    <a class="active" href="/reenter">Re-enter Park</a>
+</div>
+
+<div class="container">
+    <h2>Re-enter Theme Park</h2>
+    <p>Position your face in the center of the camera</p>
+
+    <form method="post" enctype="multipart/form-data">
+        <video id="video" autoplay playsinline></video><br>
+        <canvas id="canvas" style="display:none;"></canvas>
+
+        <input type="file" id="faceImage" name="faceImage" accept="image/*" style="display:none;" required>
+
+        <button type="button" id="takePhotoBtn" onclick="takePhoto()" disabled>Take Photo</button>
+        <button type="submit" id="submitBtn" disabled>Check Face</button>
+
+        <div>
+            <img id="preview" alt="Photo preview">
+        </div>
+    </form>
+
+    <div th:if="${result}" th:class="${result.contains('recognized') ? 'result recognized' : result.contains('Error') ? 'result error' : 'result not-recognized'}">
+        <p th:text="${result}"></p>
+    </div>
+</div>
+</body>
+</html>
