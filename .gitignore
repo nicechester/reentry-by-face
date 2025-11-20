@@ -36,3 +36,5 @@ build/
 .mvn
 
 face_database.dat
+
+.DS_Store
