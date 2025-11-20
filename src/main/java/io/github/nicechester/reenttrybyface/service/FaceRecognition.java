@@ -1,18 +1,17 @@
 package io.github.nicechester.reenttrybyface.service;
 
-import jakarta.annotation.PostConstruct;
+import io.micrometer.common.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.bytedeco.javacpp.FloatPointer;
-import org.bytedeco.javacpp.IntPointer;
 import org.bytedeco.opencv.opencv_core.*;
 import org.bytedeco.opencv.opencv_dnn.Net;
 import org.bytedeco.opencv.opencv_objdetect.CascadeClassifier;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
 import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 import static org.bytedeco.opencv.global.opencv_core.*;
 import static org.bytedeco.opencv.global.opencv_dnn.*;
@@ -25,11 +24,11 @@ public class FaceRecognition {
 
     private CascadeClassifier faceDetector;
     private Net faceNetModel;
-    private static final double SIMILARITY_THRESHOLD = 0.6; // Lower threshold = stricter matching
+    private static final double SIMILARITY_THRESHOLD = 0.9;
     private static final String DATA_FILE = "face_database.dat";
 
     // In-memory database of registered face embeddings
-    private Map<UUID, float[]> registeredFaceEmbeddings;
+    private Map<String, float[]> registeredFaceEmbeddings;
 
     @PostConstruct
     public void init() {
@@ -68,7 +67,7 @@ public class FaceRecognition {
             registeredFaceEmbeddings = new HashMap<>();
             loadDatabase();
 
-            log.info("FaceRecognition initialized successfully with FaceNet");
+            log.info("FaceNet recognition system initialized successfully");
 
         } catch (IOException e) {
             throw new RuntimeException("Failed to initialize FaceRecognition", e);
@@ -79,16 +78,12 @@ public class FaceRecognition {
         try {
             log.info("Loading FaceNet model...");
 
-            // Try to load the model from resources
             InputStream modelStream = getClass().getClassLoader()
                     .getResourceAsStream("nn4.small2.v1.t7");
 
             if (modelStream == null) {
-                log.warn("FaceNet model not found in resources. Using Haar Cascade only mode.");
-                log.warn("For better accuracy, download nn4.small2.v1.t7 and place in src/main/resources/");
-                log.warn("Download from: https://github.com/pyannote/pyannote-data/raw/master/openface.nn4.small2.v1.t7/weights.t7");
-                faceNetModel = null;
-                return;
+                throw new RuntimeException("Cannot find nn4.small2.v1.t7 in classpath. " +
+                        "Please download from: https://github.com/pyannote/pyannote-data/raw/master/openface.nn4.small2.v1.t7");
             }
 
             // Save to temp file
@@ -114,18 +109,16 @@ public class FaceRecognition {
             log.info("FaceNet model loaded successfully");
 
         } catch (Exception e) {
-            log.error("Error loading FaceNet model: " + e.getMessage());
-            log.warn("Falling back to Haar Cascade only mode");
-            faceNetModel = null;
+            throw new RuntimeException("Failed to load FaceNet model: " + e.getMessage(), e);
         }
     }
 
     /**
      * Registers a face with an ID
      */
-    public void register(File facePic, UUID id) {
+    public void register(File facePic, String name) {
         try {
-            log.info("Registering face with ID: {}", id);
+            log.info("Registering face with ID: {}", name);
 
             Mat image = imread(facePic.getAbsolutePath());
             if (image.empty()) {
@@ -133,20 +126,12 @@ public class FaceRecognition {
             }
 
             Mat face = detectFace(image);
+            float[] embedding = getFaceEmbedding(face);
 
-            if (faceNetModel != null) {
-                // Use FaceNet embeddings
-                float[] embedding = getFaceEmbedding(face);
-                registeredFaceEmbeddings.put(id, embedding);
-            } else {
-                // Fallback to pixel comparison (convert Mat to embedding-like representation)
-                float[] pixelEmbedding = matToEmbedding(face);
-                registeredFaceEmbeddings.put(id, pixelEmbedding);
-            }
-
+            registeredFaceEmbeddings.put(name, embedding);
             saveDatabase();
 
-            log.info("Successfully registered face with ID: {}", id);
+            log.info("Successfully registered face with ID: {}", name);
             log.info("Total registered faces: {}", registeredFaceEmbeddings.size());
 
         } catch (Exception e) {
@@ -158,7 +143,7 @@ public class FaceRecognition {
     /**
      * Recognizes a face and returns the matching ID
      */
-    public UUID recognize(File facePic) {
+    public String recognize(File facePic) {
         try {
             log.info("Attempting to recognize face...");
 
@@ -168,21 +153,16 @@ public class FaceRecognition {
             }
 
             Mat face = detectFace(image);
+            float[] targetEmbedding = getFaceEmbedding(face);
 
-            float[] targetEmbedding;
-            if (faceNetModel != null) {
-                targetEmbedding = getFaceEmbedding(face);
-            } else {
-                targetEmbedding = matToEmbedding(face);
-            }
-
-            UUID bestMatchId = null;
+            String bestMatchId = "";
             double bestSimilarity = Double.MAX_VALUE;
 
-            log.info("Comparing against {} registered faces...", registeredFaceEmbeddings.size());
+            log.info("Comparing against {} registered faces (threshold: {})",
+                    registeredFaceEmbeddings.size(), String.format("%.4f", SIMILARITY_THRESHOLD));
 
-            for (Map.Entry<UUID, float[]> entry : registeredFaceEmbeddings.entrySet()) {
-                UUID id = entry.getKey();
+            for (Map.Entry<String, float[]> entry : registeredFaceEmbeddings.entrySet()) {
+                String id = entry.getKey();
                 float[] registeredEmbedding = entry.getValue();
 
                 double distance = euclideanDistance(targetEmbedding, registeredEmbedding);
@@ -195,7 +175,7 @@ public class FaceRecognition {
                 }
             }
 
-            if (bestMatchId != null) {
+            if (StringUtils.isNotEmpty(bestMatchId)) {
                 log.info("✓ MATCH FOUND! ID: {} (distance: {})", bestMatchId, String.format("%.4f", bestSimilarity));
             } else {
                 log.info("✗ NO MATCH FOUND (best distance: {})",
@@ -206,7 +186,7 @@ public class FaceRecognition {
 
         } catch (Exception e) {
             log.error("Error recognizing face: " + e.getMessage(), e);
-            return null;
+            return "";
         }
     }
 
@@ -233,6 +213,8 @@ public class FaceRecognition {
         log.info("Face detection found {} faces", faceDetections.size());
 
         if (faceDetections.size() == 0) {
+            // Try with more lenient parameters
+            log.info("Trying with more lenient parameters...");
             faceDetector.detectMultiScale(
                     grayImage,
                     faceDetections,
@@ -255,9 +237,9 @@ public class FaceRecognition {
 
         Mat face = new Mat(image, faceRect);
 
-        // Resize to standard size
+        // Resize to FaceNet input size
         Mat resizedFace = new Mat();
-        Size size = new Size(96, 96); // FaceNet input size
+        Size size = new Size(96, 96);
         resize(face, resizedFace, size);
 
         return resizedFace;
@@ -267,56 +249,28 @@ public class FaceRecognition {
      * Gets face embedding using FaceNet
      */
     private float[] getFaceEmbedding(Mat face) {
-        // Prepare input blob
+        // Prepare input blob for FaceNet
         Mat blob = blobFromImage(face, 1.0 / 255, new Size(96, 96),
                 new Scalar(0.0, 0.0, 0.0, 0.0), true, false, CV_32F);
 
         faceNetModel.setInput(blob);
         Mat output = faceNetModel.forward();
 
-        // Convert to float array
+        // Convert to float array (128-dimensional embedding)
         float[] embedding = new float[(int) output.total()];
         FloatPointer fp = new FloatPointer(output.data());
         fp.get(embedding);
 
-        // Normalize
+        // Normalize the embedding
         embedding = normalizeEmbedding(embedding);
+
+        log.debug("Generated {}-dimensional face embedding", embedding.length);
 
         return embedding;
     }
 
     /**
-     * Fallback: Convert Mat to embedding-like representation
-     */
-    private float[] matToEmbedding(Mat face) {
-        Mat grayFace = new Mat();
-        if (face.channels() > 1) {
-            cvtColor(face, grayFace, COLOR_BGR2GRAY);
-        } else {
-            grayFace = face.clone();
-        }
-
-        // Resize to smaller size for efficiency
-        Mat small = new Mat();
-        resize(grayFace, small, new Size(32, 32));
-
-        // Convert to float array
-        int total = (int) small.total();
-        float[] embedding = new float[total];
-
-        // Read pixel values directly
-        byte[] data = new byte[total];
-        small.data().get(data);
-
-        for (int i = 0; i < total; i++) {
-            embedding[i] = data[i] & 0xFF; // Convert byte to unsigned int
-        }
-
-        return normalizeEmbedding(embedding);
-    }
-
-    /**
-     * Normalizes an embedding vector
+     * Normalizes an embedding vector (L2 normalization)
      */
     private float[] normalizeEmbedding(float[] embedding) {
         double sum = 0;
@@ -380,7 +334,7 @@ public class FaceRecognition {
         try (ObjectInputStream ois = new ObjectInputStream(
                 new FileInputStream(DATA_FILE))) {
 
-            registeredFaceEmbeddings = (Map<UUID, float[]>) ois.readObject();
+            registeredFaceEmbeddings = (Map<String, float[]>) ois.readObject();
             log.info("Database loaded: {} faces registered", registeredFaceEmbeddings.size());
 
         } catch (IOException | ClassNotFoundException e) {

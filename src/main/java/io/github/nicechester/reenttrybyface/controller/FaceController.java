@@ -1,6 +1,7 @@
 package io.github.nicechester.reenttrybyface.controller;
 
 import io.github.nicechester.reenttrybyface.service.FaceRecognition;
+import io.micrometer.common.util.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -32,7 +33,7 @@ public class FaceController {
     }
 
     @PostMapping("/register")
-    public String registerFace(@RequestParam("faceImage") MultipartFile file, Model model) {
+    public String registerFace(@RequestParam("name") String name, @RequestParam("faceImage") MultipartFile file, Model model) {
         File tempFile = null;
         try {
             // Validate file
@@ -50,9 +51,8 @@ public class FaceController {
             System.out.println("Temp file path: " + tempFile.getAbsolutePath());
 
             // Register the face
-            UUID faceId = UUID.randomUUID();
-            faceService.register(tempFile, faceId);
-            model.addAttribute("message", "Face registered for today! ID: " + faceId);
+            faceService.register(tempFile, name);
+            model.addAttribute("message", "Face registered for today! Name: " + name);
         } catch (Exception e) {
             model.addAttribute("message", "Error registering face: " + e.getMessage());
             e.printStackTrace();
@@ -78,9 +78,9 @@ public class FaceController {
             tempFile = convertMultipartFileToFile(file);
 
             // Recognize the face
-            UUID id = faceService.recognize(tempFile);
+            String name = faceService.recognize(tempFile);
             model.addAttribute("result",
-                    id != null ? "Face recognized. Welcome back! ID: " + id : "Face not recognized for today.");
+                    StringUtils.isNotEmpty(name) ? "Face recognized. Welcome back " + name : "Face not recognized for today.");
         } catch (Exception e) {
             model.addAttribute("result", "Error recognizing face: " + e.getMessage());
             e.printStackTrace();
