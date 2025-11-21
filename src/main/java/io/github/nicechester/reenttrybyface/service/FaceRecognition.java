@@ -156,7 +156,7 @@ public class FaceRecognition {
             float[] targetEmbedding = getFaceEmbedding(face);
 
             String bestMatchId = "";
-            double bestSimilarity = Double.MAX_VALUE;
+            double bestSimilarity = -1; // Cosine similarity ranges from -1 to 1
 
             log.info("Comparing against {} registered faces (threshold: {})",
                     registeredFaceEmbeddings.size(), String.format("%.4f", SIMILARITY_THRESHOLD));
@@ -165,20 +165,20 @@ public class FaceRecognition {
                 String id = entry.getKey();
                 float[] registeredEmbedding = entry.getValue();
 
-                double distance = euclideanDistance(targetEmbedding, registeredEmbedding);
+                double similarity = cosineSimilarity(targetEmbedding, registeredEmbedding);
 
-                log.info("  ID {}: distance={}", id, String.format("%.4f", distance));
+                log.info("  ID {}: similarity={}", id, String.format("%.4f", similarity));
 
-                if (distance < SIMILARITY_THRESHOLD && distance < bestSimilarity) {
-                    bestSimilarity = distance;
+                if (similarity > SIMILARITY_THRESHOLD && similarity > bestSimilarity) {
+                    bestSimilarity = similarity;
                     bestMatchId = id;
                 }
             }
 
             if (StringUtils.isNotEmpty(bestMatchId)) {
-                log.info("✓ MATCH FOUND! Name: {} (distance: {})", bestMatchId, String.format("%.4f", bestSimilarity));
+                log.info("✓ MATCH FOUND! Name: {} (similarity: {})", bestMatchId, String.format("%.4f", bestSimilarity));
             } else {
-                log.info("✗ NO MATCH FOUND (best distance: {})",
+                log.info("✗ NO MATCH FOUND (best similarity: {})",
                         registeredFaceEmbeddings.isEmpty() ? "N/A" : String.format("%.4f", bestSimilarity));
             }
 
@@ -283,7 +283,7 @@ public class FaceRecognition {
 
         if (norm > 0) {
             for (int i = 0; i < embedding.length; i++) {
-                embedding[i] /= norm;
+                embedding[i] /= (float) norm; // Explicit cast to float to avoid precision loss warning
             }
         }
 
@@ -291,20 +291,24 @@ public class FaceRecognition {
     }
 
     /**
-     * Calculates Euclidean distance between two embeddings
+     * Calculates Cosine similarity between two embeddings
      */
-    private double euclideanDistance(float[] embedding1, float[] embedding2) {
+    private double cosineSimilarity(float[] embedding1, float[] embedding2) {
         if (embedding1.length != embedding2.length) {
             throw new IllegalArgumentException("Embeddings must have same length");
         }
 
-        double sum = 0;
+        double dotProduct = 0.0;
+        double normA = 0.0;
+        double normB = 0.0;
+
         for (int i = 0; i < embedding1.length; i++) {
-            double diff = embedding1[i] - embedding2[i];
-            sum += diff * diff;
+            dotProduct += embedding1[i] * embedding2[i];
+            normA += embedding1[i] * embedding1[i];
+            normB += embedding2[i] * embedding2[i];
         }
 
-        return Math.sqrt(sum);
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 
     /**
