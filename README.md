@@ -16,3 +16,7 @@ This project is a simple face recognition web application built with the followi
 ## Model Sources
 - Facenet model: https://github.com/pyannote/pyannote-data/blob/master/openface.nn4.small2.v1.t7
 - Haarcascade file: https://github.com/opencv/opencv/tree/master/data/haarcascades/haarcascade_frontalface_default.xml
+
+## Illustrations
+![Face Recognition Architecture](src/main/resources/static/face-recognition-architecture.png)
+![Turnstile Face Recognition](src/main/resources/static/turnstile-face-recognition.png)

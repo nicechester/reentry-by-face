@@ -24,7 +24,7 @@ public class FaceRecognition {
 
     private CascadeClassifier faceDetector;
     private Net faceNetModel;
-    private static final double SIMILARITY_THRESHOLD = 0.9;
+    private static final double SIMILARITY_THRESHOLD = 0.6; // Lowered for better accuracy
     private static final String DATA_FILE = "face_database.dat";
 
     // In-memory database of registered face embeddings
@@ -118,7 +118,7 @@ public class FaceRecognition {
      */
     public void register(File facePic, String name) {
         try {
-            log.info("Registering face with ID: {}", name);
+            log.info("Registering face with {}", name);
 
             Mat image = imread(facePic.getAbsolutePath());
             if (image.empty()) {
@@ -131,7 +131,7 @@ public class FaceRecognition {
             registeredFaceEmbeddings.put(name, embedding);
             saveDatabase();
 
-            log.info("Successfully registered face with ID: {}", name);
+            log.info("Successfully registered face with {}", name);
             log.info("Total registered faces: {}", registeredFaceEmbeddings.size());
 
         } catch (Exception e) {
@@ -176,7 +176,7 @@ public class FaceRecognition {
             }
 
             if (StringUtils.isNotEmpty(bestMatchId)) {
-                log.info("✓ MATCH FOUND! ID: {} (distance: {})", bestMatchId, String.format("%.4f", bestSimilarity));
+                log.info("✓ MATCH FOUND! Name: {} (distance: {})", bestMatchId, String.format("%.4f", bestSimilarity));
             } else {
                 log.info("✗ NO MATCH FOUND (best distance: {})",
                         registeredFaceEmbeddings.isEmpty() ? "N/A" : String.format("%.4f", bestSimilarity));
@@ -241,6 +241,8 @@ public class FaceRecognition {
         Mat resizedFace = new Mat();
         Size size = new Size(96, 96);
         resize(face, resizedFace, size);
+
+        imwrite("detected_face.jpg", resizedFace); // For debugging
 
         return resizedFace;
     }
